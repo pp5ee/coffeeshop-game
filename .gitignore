@@ -19,3 +19,7 @@ Thumbs.db
 # Logs and temporary files
 *.log
 *.tmp
+
+# Code review temporary files
+round-*-codex-review.*
+round-*-review-*.md

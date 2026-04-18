@@ -176,20 +176,19 @@ class PixelCoffeeShop {
     _computeQueueSlots() {
         const { queueStart, counter } = this.worldLayout;
         const NUM_SLOTS  = 5;
-        const SLOT_SPACE = 40; // px between slots
+        const SLOT_SPACE = 40;
         const slots      = [];
 
-        // Direction vector from queueStart toward counter
-        const dx  = counter.x - queueStart.x;
-        const dy  = counter.y - queueStart.y;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        const ux  = dx / len;
-        const uy  = dy / len;
+        // Simplified direction vector calculation
+        const dx = counter.x - queueStart.x;
+        const dy = counter.y - queueStart.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const ratio = SLOT_SPACE / dist;
 
         for (let i = 0; i < NUM_SLOTS; i++) {
             slots.push({
-                x: queueStart.x + ux * i * SLOT_SPACE,
-                y: queueStart.y + uy * i * SLOT_SPACE,
+                x: queueStart.x + dx * ratio * i,
+                y: queueStart.y + dy * ratio * i,
             });
         }
         return slots;
@@ -415,7 +414,7 @@ class PixelCoffeeShop {
     }
 
     updateUI() {
-        // Update counters
+        // Simplified counter updates
         this.moneyCounter.textContent = `$${this.money}`;
         this.ordersCounter.textContent = this.ordersCompleted.toString();
         this.failedCounter.textContent = this.customersFailed.toString();
@@ -423,48 +422,38 @@ class PixelCoffeeShop {
 
         const now = performance.now();
 
-        // ── Current order display ─────────────────────────────────────────
+        // Simplified order display
         const orderDisplay = document.getElementById('current-order');
         if (this.currentOrder) {
             const { label, price } = this.currentOrder.drink;
-            orderDisplay.textContent = `${label}  ($${price})  – Customer #${this.currentOrder.customerId}`;
-        } else if (this.queue.length > 0) {
-            orderDisplay.textContent = `${this.queue.length} customer(s) waiting…`;
+            orderDisplay.textContent = `${label} ($${price}) – Customer #${this.currentOrder.customerId}`;
         } else {
-            orderDisplay.textContent = 'Waiting for customer…';
+            orderDisplay.textContent = this.queue.length > 0 ? `${this.queue.length} customer(s) waiting…` : 'Waiting for customer…';
         }
 
-        // ── Patience meter ────────────────────────────────────────────────
+        // Simplified patience meter
         const patienceFill = document.getElementById('patience-fill');
         if (patienceFill) {
             if (this.currentOrder) {
                 const pct = this.currentOrder.getPatienceFraction(now) * 100;
                 patienceFill.style.width = `${pct}%`;
-                // Colour shifts green → yellow → red as patience drains
-                if (pct > 60) {
-                    patienceFill.style.backgroundColor = '#8FBC8F';
-                } else if (pct > 30) {
-                    patienceFill.style.backgroundColor = '#DAA520';
-                } else {
-                    patienceFill.style.backgroundColor = '#CD5C5C';
-                }
+                // Simplified color logic
+                patienceFill.style.backgroundColor = pct > 60 ? '#8FBC8F' : pct > 30 ? '#DAA520' : '#CD5C5C';
             } else {
                 patienceFill.style.width = '0%';
             }
         }
 
-        // ── Preparation status ────────────────────────────────────────────
+        // Simplified preparation status
         const prepStatus = document.getElementById('preparing-drink');
-        const serveBtn   = document.getElementById('serve-button');
+        const serveBtn = document.getElementById('serve-button');
 
         if (this.preparedDrink) {
-            const label = DRINKS.get(this.preparedDrink.drinkType).label;
-            prepStatus.textContent = `${label} ready! ☕`;
+            prepStatus.textContent = `${DRINKS.get(this.preparedDrink.drinkType).label} ready! ☕`;
             serveBtn.disabled = false;
         } else if (this.currentPrep) {
-            const pct   = Math.round(this.currentPrep.getProgressFraction(now) * 100);
-            const label = this.currentPrep.drink.label;
-            prepStatus.textContent = `Brewing ${label}… ${pct}%`;
+            const pct = Math.round(this.currentPrep.getProgressFraction(now) * 100);
+            prepStatus.textContent = `Brewing ${this.currentPrep.drink.label}… ${pct}%`;
             serveBtn.disabled = true;
         } else {
             prepStatus.textContent = 'Ready to prepare';
@@ -490,98 +479,56 @@ class PixelCoffeeShop {
     }
 
     updateCustomers() {
-        // ── 1. Spawn timer ────────────────────────────────────────────────────
+        // Simplified spawn timer logic
         if (this._nextSpawnDelay > 0) {
             this._spawnAccumulator += this.deltaTime;
             if (this._spawnAccumulator >= this._nextSpawnDelay) {
                 this._spawnAccumulator = 0;
-                // Progressive difficulty: spawn interval shrinks as the day advances.
-                // scale goes from 1.0 at the start down to 0.3 near the end, so
-                // customers arrive more frequently as game time increases.
-                const baseMin = 8;
-                const baseMax = 14;
-                const minClamp = 4;
-                const scale = Math.min(1, Math.max(0.3, 1 - this.gameTime / this.dayLength));
-                const lo = Math.max(minClamp, baseMin * scale);
-                const hi = Math.max(minClamp, baseMax * scale);
+                // Progressive difficulty with simplified calculation
+                const scale = Math.max(0.3, 1 - this.gameTime / this.dayLength);
+                const lo = Math.max(4, 8 * scale);
+                const hi = Math.max(4, 14 * scale);
                 this._nextSpawnDelay = lo + Math.random() * (hi - lo);
                 this._spawnCustomer();
             }
         }
 
-        // ── 2. Per-customer movement + state transitions ───────────────────
-        const ARRIVAL_THRESHOLD = 4; // px – "close enough" to target
-        const { counter, exit }  = this.worldLayout;
+        // Simplified customer movement and state transitions
+        const ARRIVAL_THRESHOLD = 4;
+        const { counter, exit } = this.worldLayout;
 
         for (const customer of this.customers) {
-            // ── Move toward target ─────────────────────────────────────────
-            const dx   = customer.targetX - customer.x;
-            const dy   = customer.targetY - customer.y;
+            // Move toward target with simplified distance calculation
+            const dx = customer.targetX - customer.x;
+            const dy = customer.targetY - customer.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
             if (dist > ARRIVAL_THRESHOLD) {
-                const step = customer.speed * this.deltaTime;
-                const move = Math.min(step, dist);
+                const move = Math.min(customer.speed * this.deltaTime, dist);
                 customer.x += (dx / dist) * move;
                 customer.y += (dy / dist) * move;
             } else {
-                // Snap exactly to target
                 customer.x = customer.targetX;
                 customer.y = customer.targetY;
             }
 
+            // Simplified state transitions
             const atTarget = dist <= ARRIVAL_THRESHOLD;
-
-            // ── State transitions ──────────────────────────────────────────
-            switch (customer.state) {
-                case 'entering':
-                    // Customer walks to their assigned queue slot
-                    if (atTarget) {
-                        customer.state = 'in_queue';
-                    }
-                    break;
-
-                case 'in_queue':
-                    // Keep drifting to updated slot (queue may compact)
-                    // Transition to to_counter is triggered by updateQueue()
-                    break;
-
-                case 'to_counter':
-                    if (atTarget) {
-                        customer.state = 'at_counter';
-                        // Create the order when customer is physically at the counter
-                        if (!this.currentOrder) {
-                            this.currentOrder = new Order(customer.drinkType, customer.id);
-                            this.showFeedback(
-                                `Customer ${customer.id} wants a ${this.currentOrder.drink.label}!`,
-                                'info'
-                            );
-                            console.log(
-                                `Order assigned at counter: Customer ${customer.id} → ${customer.drinkType} ($${this.currentOrder.drink.price})`
-                            );
-                        }
-                    }
-                    break;
-
-                case 'at_counter':
-                    // Waiting; order management handled in updateCurrentOrder() / serveDrink()
-                    break;
-
-                case 'leaving_happy':
-                case 'leaving_unhappy':
-                    // Already moving toward exit – nothing extra needed; cleanup below
-                    break;
-
-                default:
-                    break;
+            if (customer.state === 'entering' && atTarget) {
+                customer.state = 'in_queue';
+            } else if (customer.state === 'to_counter' && atTarget) {
+                customer.state = 'at_counter';
+                if (!this.currentOrder) {
+                    this.currentOrder = new Order(customer.drinkType, customer.id);
+                    this.showFeedback(`Customer ${customer.id} wants a ${this.currentOrder.drink.label}!`, 'info');
+                }
             }
         }
 
-        // ── 3. Remove customers that have reached (or passed) the exit ────
+        // Simplified customer cleanup
         this.customers = this.customers.filter(customer => {
-            if (customer.state !== 'leaving_happy' && customer.state !== 'leaving_unhappy') {
-                return true; // keep
-            }
+            const isLeaving = customer.state === 'leaving_happy' || customer.state === 'leaving_unhappy';
+            if (!isLeaving) return true;
             const dx = exit.x - customer.x;
             const dy = exit.y - customer.y;
             return Math.sqrt(dx * dx + dy * dy) > ARRIVAL_THRESHOLD;
