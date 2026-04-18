@@ -205,9 +205,11 @@ class PixelCoffeeShop {
         // Switch to game screen
         this.switchScreen('game-screen');
 
-        // Start game loop
-        this.lastTime = performance.now();
-        this.gameLoop();
+        // Start game loop using rAF timestamp to avoid negative delta on first frame
+        requestAnimationFrame((time) => {
+            this.lastTime = time;
+            this.gameLoop(time);
+        });
 
         // Start customer spawning
         this.startCustomerSpawning();
@@ -547,6 +549,17 @@ class PixelCoffeeShop {
                 case 'to_counter':
                     if (atTarget) {
                         customer.state = 'at_counter';
+                        // Create the order when customer is physically at the counter
+                        if (!this.currentOrder) {
+                            this.currentOrder = new Order(customer.drinkType, customer.id);
+                            this.showFeedback(
+                                `Customer ${customer.id} wants a ${this.currentOrder.drink.label}!`,
+                                'info'
+                            );
+                            console.log(
+                                `Order assigned at counter: Customer ${customer.id} → ${customer.drinkType} ($${this.currentOrder.drink.price})`
+                            );
+                        }
                     }
                     break;
 
@@ -632,23 +645,13 @@ class PixelCoffeeShop {
         if (!this.currentOrder && this.queue.length > 0) {
             const front = this.queue[0];
             if (front.state === 'in_queue') {
-                // Remove from waiting queue
+                // Remove from waiting queue and send to counter
                 this.queue.shift();
-                // Send to counter
                 front.state   = 'to_counter';
                 front.targetX = this.worldLayout.counter.x;
                 front.targetY = this.worldLayout.counter.y - 36; // stand just in front of counter
-                // Create order now so the UI shows what they want while walking up
-                this.currentOrder = new Order(front.drinkType, front.id);
-                // Re-slot the remaining waiters
+                // Re-slot the remaining waiters while the promoted customer walks up
                 this._assignQueueSlots();
-                this.showFeedback(
-                    `Customer ${front.id} wants a ${this.currentOrder.drink.label}!`,
-                    'info'
-                );
-                console.log(
-                    `Order assigned: Customer ${front.id} → ${front.drinkType} ($${this.currentOrder.drink.price})`
-                );
             }
         }
     }
@@ -856,6 +859,10 @@ class PixelCoffeeShop {
     createSound(frequency, duration, type) {
         return () => {
             if (!this.audioEnabled || !this.audioContext) return;
+            // Ensure the AudioContext is running (some browsers start suspended)
+            if (this.audioContext.state === 'suspended') {
+                try { this.audioContext.resume(); } catch (_) {}
+            }
 
             const oscillator = this.audioContext.createOscillator();
             const gainNode = this.audioContext.createGain();
