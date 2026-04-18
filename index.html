@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Coffee Shop</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container">
+        <!-- Start Screen -->
+        <div id="start-screen" class="screen active">
+            <div class="screen-content">
+                <h1>Pixel Coffee Shop</h1>
+                <p>Welcome to your cozy coffee shop! Serve customers, make money, and keep them happy.</p>
+                <div id="instructions">
+                    <h2>How to Play:</h2>
+                    <ul>
+                        <li>Customers will enter and join the queue</li>
+                        <li>Prepare drinks by clicking the buttons</li>
+                        <li>Serve the correct drink to each customer</li>
+                        <li>Don't let customers wait too long!</li>
+                    </ul>
+                </div>
+                <button id="start-button" class="pixel-button">Start Game</button>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="game-screen" class="screen">
+            <!-- Game World -->
+            <div id="game-world">
+                <canvas id="game-canvas" width="800" height="600"></canvas>
+                <div id="ui-overlay">
+                    <!-- Stats Panel -->
+                    <div id="stats-panel" class="ui-panel">
+                        <div class="stat">
+                            <span class="stat-label">Money:</span>
+                            <span id="money-counter">$0</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Orders:</span>
+                            <span id="orders-counter">0</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Failed:</span>
+                            <span id="failed-counter">0</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Time:</span>
+                            <span id="time-counter">0s</span>
+                        </div>
+                    </div>
+
+                    <!-- Order Panel -->
+                    <div id="order-panel" class="ui-panel">
+                        <h3>Current Order</h3>
+                        <div id="current-order">Waiting for customer...</div>
+                        <div id="patience-meter">
+                            <div class="meter-label">Patience:</div>
+                            <div class="meter-bar">
+                                <div id="patience-fill" class="meter-fill"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Drink Preparation Panel -->
+                    <div id="preparation-panel" class="ui-panel">
+                        <h3>Prepare Drinks</h3>
+                        <div id="drink-buttons">
+                            <button class="drink-button pixel-button" data-drink="espresso">Espresso</button>
+                            <button class="drink-button pixel-button" data-drink="americano">Americano</button>
+                            <button class="drink-button pixel-button" data-drink="latte">Latte</button>
+                            <button class="drink-button pixel-button" data-drink="cappuccino">Cappuccino</button>
+                        </div>
+                        <div id="preparation-status">
+                            <div id="preparing-drink">Ready to prepare</div>
+                            <button id="serve-button" class="pixel-button" disabled>Serve</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- End Screen -->
+        <div id="end-screen" class="screen">
+            <div class="screen-content">
+                <h1>Day Complete!</h1>
+                <div id="end-stats">
+                    <div class="end-stat">
+                        <span class="end-label">Total Money:</span>
+                        <span id="end-money">$0</span>
+                    </div>
+                    <div class="end-stat">
+                        <span class="end-label">Orders Served:</span>
+                        <span id="end-orders">0</span>
+                    </div>
+                    <div class="end-stat">
+                        <span class="end-label">Failed Customers:</span>
+                        <span id="end-failed">0</span>
+                    </div>
+                    <div class="end-stat">
+                        <span class="end-label">Time Played:</span>
+                        <span id="end-time">0s</span>
+                    </div>
+                </div>
+                <button id="restart-button" class="pixel-button">Play Again</button>
+            </div>
+        </div>
+
+        <!-- Audio Controls -->
+        <div id="audio-controls">
+            <button id="mute-button" class="pixel-button small">🔊</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

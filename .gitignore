@@ -1,0 +1,21 @@
+# Humanize generated files
+.humanize*
+
+# Build artifacts
+node_modules/
+dist/
+build/
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
