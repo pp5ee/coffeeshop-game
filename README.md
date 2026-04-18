@@ -10,7 +10,7 @@ A cozy pixel-art coffee shop management game built with plain HTML, CSS, and Jav
 - **Order System**: Data-driven order management with patience tracking
 - **Audio Feedback**: Web Audio API sound effects for key game events
 - **Game States**: Start screen, active gameplay, and end-of-day summary
-- **Progressive Difficulty**: Customers arrive faster as time progresses
+- **Progressive Difficulty**: Spawn intervals shrink as the day advances, so customers arrive more frequently toward closing time
 
 ## Gameplay
 
@@ -73,7 +73,7 @@ pixel-coffee-shop/
 ### Game Mechanics
 
 #### Customer Flow
-1. Customers spawn at the entrance every 5-13 seconds
+1. Customers spawn at the entrance at a progressively shrinking interval: 8–14 seconds early in the day, down to roughly 4 seconds near closing
 2. They join the queue and wait their turn
 3. When they reach the counter, they place an order
 4. A patience meter starts counting down (20 seconds total)
@@ -168,7 +168,7 @@ class PixelCoffeeShop { ... }
 - ✅ Serving mechanics with success/failure feedback
 - ✅ Audio system with Web Audio API
 - ✅ Game state management (start/gameplay/end)
-- ✅ Progressive difficulty scaling
+- ✅ Progressive difficulty scaling (spawn interval shrinks from 8–14 s to ~4 s over 3 minutes)
 
 ## Future Enhancements
 

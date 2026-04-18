@@ -161,9 +161,38 @@ class PixelCoffeeShop {
             exit: { x: 700, y: 50 }
         };
 
+        // Pre-compute queue slot positions (4–6 slots, ~40 px spacing)
+        this.queueSlots = this._computeQueueSlots();
+
         // Initialize audio system (to be implemented)
         this.audioEnabled = true;
         this.audioContext = null;
+    }
+
+    /**
+     * Compute evenly-spaced queue positions from queueStart toward the counter.
+     * Returns an array of {x, y} objects.
+     */
+    _computeQueueSlots() {
+        const { queueStart, counter } = this.worldLayout;
+        const NUM_SLOTS  = 5;
+        const SLOT_SPACE = 40; // px between slots
+        const slots      = [];
+
+        // Direction vector from queueStart toward counter
+        const dx  = counter.x - queueStart.x;
+        const dy  = counter.y - queueStart.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const ux  = dx / len;
+        const uy  = dy / len;
+
+        for (let i = 0; i < NUM_SLOTS; i++) {
+            slots.push({
+                x: queueStart.x + ux * i * SLOT_SPACE,
+                y: queueStart.y + uy * i * SLOT_SPACE,
+            });
+        }
+        return slots;
     }
 
     startGame() {
@@ -294,22 +323,79 @@ class PixelCoffeeShop {
     }
 
     drawCustomers() {
-        // Placeholder for customer rendering
-        // Will be implemented in customer system
-        this.customers.forEach(customer => {
-            if (customer.sprite) {
-                this.ctx.drawImage(customer.sprite, customer.x, customer.y);
-            } else {
-                // Fallback: draw colored squares
-                this.ctx.fillStyle = customer.color || '#CD5C5C';
-                this.ctx.fillRect(customer.x, customer.y, 32, 32);
+        const ctx = this.ctx;
+        const now = performance.now();
 
-                // Draw customer number
-                this.ctx.fillStyle = '#FFFFFF';
-                this.ctx.font = '12px Courier New';
-                this.ctx.textAlign = 'center';
-                this.ctx.fillText(customer.id.toString(), customer.x + 16, customer.y + 20);
+        this.customers.forEach(customer => {
+            const cx = Math.round(customer.x);
+            const cy = Math.round(customer.y);
+
+            // ── Body ────────────────────────────────────────────────────────
+            // Slightly transparent when leaving so they visually "fade out"
+            const isLeaving = customer.state === 'leaving_happy' || customer.state === 'leaving_unhappy';
+            ctx.globalAlpha = isLeaving ? 0.6 : 1.0;
+
+            if (customer.sprite) {
+                ctx.drawImage(customer.sprite, cx, cy);
+            } else {
+                // Body square
+                ctx.fillStyle = customer.color || '#CD5C5C';
+                ctx.fillRect(cx, cy, 32, 32);
+
+                // State-coloured border
+                ctx.lineWidth = 2;
+                if (customer.state === 'at_counter' || customer.state === 'to_counter') {
+                    ctx.strokeStyle = '#FFD700'; // gold – active customer
+                } else if (customer.state === 'leaving_happy') {
+                    ctx.strokeStyle = '#8FBC8F'; // green – happy
+                } else if (customer.state === 'leaving_unhappy') {
+                    ctx.strokeStyle = '#CD5C5C'; // red – unhappy
+                } else {
+                    ctx.strokeStyle = '#FFFFFF';
+                }
+                ctx.strokeRect(cx, cy, 32, 32);
+
+                // Customer number
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = '11px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillText(customer.id.toString(), cx + 16, cy + 20);
+
+                // State emoji badge
+                let badge = '';
+                if (customer.state === 'at_counter') badge = '☕';
+                else if (customer.state === 'leaving_happy') badge = '😊';
+                else if (customer.state === 'leaving_unhappy') badge = '😠';
+                else if (customer.state === 'in_queue' || customer.state === 'entering') badge = '⏳';
+                if (badge) {
+                    ctx.font = '12px serif';
+                    ctx.fillText(badge, cx + 16, cy - 4);
+                }
             }
+
+            // ── Patience bar (only for the at_counter customer) ─────────────
+            if (customer.state === 'at_counter' && this.currentOrder &&
+                this.currentOrder.customerId === customer.id) {
+                const fraction = this.currentOrder.getPatienceFraction(now);
+                const barW = 32;
+                const barH = 4;
+                const bx   = cx;
+                const by   = cy + 35;
+                // Background
+                ctx.fillStyle = '#555555';
+                ctx.fillRect(bx, by, barW, barH);
+                // Fill
+                if (fraction > 0.6) {
+                    ctx.fillStyle = '#8FBC8F';
+                } else if (fraction > 0.3) {
+                    ctx.fillStyle = '#DAA520';
+                } else {
+                    ctx.fillStyle = '#CD5C5C';
+                }
+                ctx.fillRect(bx, by, Math.round(barW * fraction), barH);
+            }
+
+            ctx.globalAlpha = 1.0;
         });
     }
 
@@ -402,31 +488,136 @@ class PixelCoffeeShop {
     }
 
     updateCustomers() {
-        // Accumulate time and spawn new customers when the delay elapses
+        // ── 1. Spawn timer ────────────────────────────────────────────────────
         if (this._nextSpawnDelay > 0) {
             this._spawnAccumulator += this.deltaTime;
             if (this._spawnAccumulator >= this._nextSpawnDelay) {
-                this._spawnAccumulator  = 0;
-                this._nextSpawnDelay    = 5 + Math.random() * 8; // 5–13 s between customers
+                this._spawnAccumulator = 0;
+                // Progressive difficulty: spawn interval shrinks as the day advances.
+                // scale goes from 1.0 at the start down to 0.3 near the end, so
+                // customers arrive more frequently as game time increases.
+                const baseMin = 8;
+                const baseMax = 14;
+                const minClamp = 4;
+                const scale = Math.min(1, Math.max(0.3, 1 - this.gameTime / this.dayLength));
+                const lo = Math.max(minClamp, baseMin * scale);
+                const hi = Math.max(minClamp, baseMax * scale);
+                this._nextSpawnDelay = lo + Math.random() * (hi - lo);
                 this._spawnCustomer();
             }
         }
+
+        // ── 2. Per-customer movement + state transitions ───────────────────
+        const ARRIVAL_THRESHOLD = 4; // px – "close enough" to target
+        const { counter, exit }  = this.worldLayout;
+
+        for (const customer of this.customers) {
+            // ── Move toward target ─────────────────────────────────────────
+            const dx   = customer.targetX - customer.x;
+            const dy   = customer.targetY - customer.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist > ARRIVAL_THRESHOLD) {
+                const step = customer.speed * this.deltaTime;
+                const move = Math.min(step, dist);
+                customer.x += (dx / dist) * move;
+                customer.y += (dy / dist) * move;
+            } else {
+                // Snap exactly to target
+                customer.x = customer.targetX;
+                customer.y = customer.targetY;
+            }
+
+            const atTarget = dist <= ARRIVAL_THRESHOLD;
+
+            // ── State transitions ──────────────────────────────────────────
+            switch (customer.state) {
+                case 'entering':
+                    // Customer walks to their assigned queue slot
+                    if (atTarget) {
+                        customer.state = 'in_queue';
+                    }
+                    break;
+
+                case 'in_queue':
+                    // Keep drifting to updated slot (queue may compact)
+                    // Transition to to_counter is triggered by updateQueue()
+                    break;
+
+                case 'to_counter':
+                    if (atTarget) {
+                        customer.state = 'at_counter';
+                    }
+                    break;
+
+                case 'at_counter':
+                    // Waiting; order management handled in updateCurrentOrder() / serveDrink()
+                    break;
+
+                case 'leaving_happy':
+                case 'leaving_unhappy':
+                    // Already moving toward exit – nothing extra needed; cleanup below
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        // ── 3. Remove customers that have reached (or passed) the exit ────
+        this.customers = this.customers.filter(customer => {
+            if (customer.state !== 'leaving_happy' && customer.state !== 'leaving_unhappy') {
+                return true; // keep
+            }
+            const dx = exit.x - customer.x;
+            const dy = exit.y - customer.y;
+            return Math.sqrt(dx * dx + dy * dy) > ARRIVAL_THRESHOLD;
+        });
     }
 
     _spawnCustomer() {
         const drinkType = randomDrinkType();
+        const entrance  = this.worldLayout.entrance;
         const customer  = {
             id:        this._nextCustomerId++,
             drinkType, // what they will order
             color:     this._randomCustomerColor(),
-            x:         this.worldLayout.entrance.x,
-            y:         this.worldLayout.entrance.y,
-            state:     'walking', // walking → queued → at_counter → leaving
+            // Current pixel position (starts at entrance)
+            x:         entrance.x,
+            y:         entrance.y,
+            // Movement target and speed
+            targetX:   entrance.x,
+            targetY:   entrance.y,
+            speed:     80, // pixels per second
+            // Queue slot index (-1 = not yet assigned)
+            slotIndex: -1,
+            // State machine: entering → in_queue → to_counter → at_counter → leaving_happy | leaving_unhappy
+            state:     'entering',
         };
         this.customers.push(customer);
         this.queue.push(customer);
+        // Assign queue slots (gives this new customer a slot and updates any existing waiters)
+        this._assignQueueSlots();
         console.log(`Customer ${customer.id} arrived, wants ${drinkType}`);
         this.playSound('customerArrival');
+    }
+
+    /**
+     * Re-assign queue slot positions for all customers currently waiting in the
+     * queue (state === 'entering' or 'in_queue').  Customers further from the
+     * front get higher slot indices and therefore stand further back.
+     */
+    _assignQueueSlots() {
+        let slotIdx = 0;
+        for (const customer of this.queue) {
+            if (customer.state === 'entering' || customer.state === 'in_queue') {
+                customer.slotIndex = slotIdx;
+                const slot = this.queueSlots[Math.min(slotIdx, this.queueSlots.length - 1)];
+                customer.targetX = slot.x;
+                customer.targetY = slot.y;
+                slotIdx++;
+            }
+        }
     }
 
     _randomCustomerColor() {
@@ -435,18 +626,30 @@ class PixelCoffeeShop {
     }
 
     updateQueue() {
-        // If no active order and there are customers waiting, bring the next one to the counter
+        // If no active order and there are customers waiting, promote the front
+        // customer to walk to the counter – but only once they are physically at
+        // slot 0 (in_queue) so the visual matches the game logic.
         if (!this.currentOrder && this.queue.length > 0) {
-            const customer = this.queue.shift();
-            customer.state = 'at_counter';
-            this.currentOrder = new Order(customer.drinkType, customer.id);
-            this.showFeedback(
-                `Customer ${customer.id} wants a ${this.currentOrder.drink.label}!`,
-                'info'
-            );
-            console.log(
-                `Order assigned: Customer ${customer.id} → ${customer.drinkType} ($${this.currentOrder.drink.price})`
-            );
+            const front = this.queue[0];
+            if (front.state === 'in_queue') {
+                // Remove from waiting queue
+                this.queue.shift();
+                // Send to counter
+                front.state   = 'to_counter';
+                front.targetX = this.worldLayout.counter.x;
+                front.targetY = this.worldLayout.counter.y - 36; // stand just in front of counter
+                // Create order now so the UI shows what they want while walking up
+                this.currentOrder = new Order(front.drinkType, front.id);
+                // Re-slot the remaining waiters
+                this._assignQueueSlots();
+                this.showFeedback(
+                    `Customer ${front.id} wants a ${this.currentOrder.drink.label}!`,
+                    'info'
+                );
+                console.log(
+                    `Order assigned: Customer ${front.id} → ${front.drinkType} ($${this.currentOrder.drink.price})`
+                );
+            }
         }
     }
 
@@ -457,6 +660,16 @@ class PixelCoffeeShop {
         if (this.currentOrder.isExpired()) {
             const drinkLabel = this.currentOrder.drink.label;
             const custId     = this.currentOrder.customerId;
+
+            // Find the at_counter customer and send them away unhappy
+            const customer = this.customers.find(c => c.id === custId);
+            if (customer) {
+                customer.state   = 'leaving_unhappy';
+                customer.targetX = this.worldLayout.exit.x;
+                customer.targetY = this.worldLayout.exit.y;
+                customer.speed   = 100; // stomp out a bit faster
+            }
+
             this.customersFailed++;
             this.currentOrder = null;
             // Cancel any in-progress preparation
@@ -513,18 +726,28 @@ class PixelCoffeeShop {
         const servedType   = this.preparedDrink.drinkType;
         const orderedDrink = DRINKS.get(orderedType);
         const servedDrink  = DRINKS.get(servedType);
+        const custId       = this.currentOrder.customerId;
+
+        // Find the at_counter customer to animate them out
+        const customer = this.customers.find(c => c.id === custId);
 
         if (servedType === orderedType) {
             // ✅ Correct order – earn the drink's price
             const earned = orderedDrink.price;
             this.money += earned;
             this.ordersCompleted++;
+            if (customer) {
+                customer.state   = 'leaving_happy';
+                customer.targetX = this.worldLayout.exit.x;
+                customer.targetY = this.worldLayout.exit.y;
+                customer.speed   = 90;
+            }
             this.showFeedback(
                 `✓ Correct! ${orderedDrink.label} served. +$${earned}`,
                 'success'
             );
             console.log(
-                `Order fulfilled: ${orderedType} for customer ${this.currentOrder.customerId} (+$${earned})`
+                `Order fulfilled: ${orderedType} for customer ${custId} (+$${earned})`
             );
             this.playSound('serveSuccess');
         } else {
@@ -532,12 +755,18 @@ class PixelCoffeeShop {
             const penalty = 2;
             this.money    = Math.max(0, this.money - penalty);
             this.customersFailed++;
+            if (customer) {
+                customer.state   = 'leaving_unhappy';
+                customer.targetX = this.worldLayout.exit.x;
+                customer.targetY = this.worldLayout.exit.y;
+                customer.speed   = 100;
+            }
             this.showFeedback(
                 `✗ Wrong drink! Wanted ${orderedDrink.label}, got ${servedDrink.label}. -$${penalty}`,
                 'error'
             );
             console.log(
-                `Wrong drink: served ${servedType} but customer ${this.currentOrder.customerId} wanted ${orderedType}`
+                `Wrong drink: served ${servedType} but customer ${custId} wanted ${orderedType}`
             );
             this.playSound('serveFailure');
         }
